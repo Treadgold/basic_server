@@ -126,10 +126,17 @@ async def main() -> None:
     addr = server.sockets[0].getsockname()
     print("Tiny async server with decorators")
     print(f"Open http://{addr[0]}:{addr[1]}")
+    print("Press Ctrl+C to stop")
 
     async with server:
-        await server.serve_forever()
+        try:
+            await server.serve_forever()
+        except asyncio.CancelledError:
+            print("\nShutting down gracefully...")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            print("Server stopped.")

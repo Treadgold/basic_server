@@ -45,7 +45,7 @@ async def handle_client(
     elif path == "/about":
         body = "<h1>About</h1><p>Tiny async server.</p>"
     else:
-        body = "<h1>404 Not Found</h1>"
+        body = "<h1>404 Dumbass</h1>"
         response: bytes = http_response(body, status="404 Not Found")
         writer.write(response)
         await writer.drain()
@@ -70,10 +70,16 @@ async def main() -> None:
 
     addr = server.sockets[0].getsockname()
     print(f"Serving on http://{addr[0]}:{addr[1]}")
+    print("Press Ctrl+C to stop")
 
     async with server:
-        await server.serve_forever()
-
+        try:
+            await server.serve_forever()
+        except asyncio.CancelledError:
+            print("\nShutting down gracefully...")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Server stopped.")
