@@ -1,7 +1,4 @@
 import asyncio
-from typing import Callable
-
-Handler = Callable[[str], str]
 
 
 def parse_http_path(request: str) -> str:
