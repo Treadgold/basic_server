@@ -4,12 +4,20 @@ import asyncio
 def parse_http_path(request: str) -> str:
     """
     Extract the path from a very basic HTTP GET request.
-
-    Example request line:
-        GET /hello HTTP/1.1
     """
-    first_line: str = request.splitlines()[0]
-    _, path, _ = first_line.split()
+    lines = request.splitlines()
+    if not lines:
+        # No request received, return a default path or raise
+        return "/"
+    
+    first_line: str = lines[0]
+
+    # Ensure it has the right format
+    parts = first_line.split()
+    if len(parts) != 3:
+        return "/"
+
+    _, path, _ = parts
     return path
 
 
