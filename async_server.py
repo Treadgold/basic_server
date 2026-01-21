@@ -1,11 +1,10 @@
-import socket
+import asyncio
 from pathlib import Path
 
 # Directory where static files are stored
 STATIC_DIR: Path = Path(__file__).parent / "static"
 
 # Explicit mapping from file extensions to HTTP Content-Type headers
-# This tells the browser how to interpret the bytes we send
 MIME_TYPES: dict[str, str] = {
     ".html": "text/html",
     ".css": "text/css",
@@ -19,25 +18,28 @@ MIME_TYPES: dict[str, str] = {
 def parse_http_path(request: str) -> str:
     """
     Extract the requested path from the HTTP request line.
-
-    Example request line:
-        GET /styles.css HTTP/1.1
     """
-    first_line: str = request.splitlines()[0]
-    _, path, _ = first_line.split()
+    lines = request.splitlines()
+    if not lines:
+        return "/"
+
+    parts = lines[0].split()
+    if len(parts) != 3:
+        return "/"
+
+    _, path, _ = parts
     return path
 
 
 def get_content_type(file_path: Path) -> str:
     """
-    Determine the Content-Type header based on the file extension.
+    Determine the Content-Type header based on file extension.
     """
     extension: str = file_path.suffix.lower()
 
     if extension in MIME_TYPES:
         return MIME_TYPES[extension]
 
-    # Fallback for unknown or binary file types
     return "application/octet-stream"
 
 
@@ -63,27 +65,28 @@ def resolve_request_path(request_path: str) -> Path:
     """
     Convert a URL path into a filesystem path.
 
-    - "/" maps to "/index.html"
+    - "/" maps to "index.html"
     - Paths without extensions are treated as HTML pages
     """
     if request_path == "/":
         request_path = "/index.html"
     else:
-        # If there is no file extension, assume HTML
         if not Path(request_path).suffix:
             request_path += ".html"
 
-    # Remove leading slash before joining with filesystem path
     return STATIC_DIR / request_path.lstrip("/")
 
 
-def handle_client(client_socket: socket.socket) -> None:
+async def handle_client(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+) -> None:
     """
-    Handle a single HTTP request from a client.
+    Handle a single HTTP request using asyncio streams.
     """
-    request_bytes: bytes = client_socket.recv(1024)
+    request_bytes: bytes = await reader.read(1024)
     if not request_bytes:
-        client_socket.close()
+        writer.close()
         return
 
     request: str = request_bytes.decode("utf-8", errors="ignore")
@@ -103,39 +106,34 @@ def handle_client(client_socket: socket.socket) -> None:
             content_type="text/html",
         )
 
-    client_socket.sendall(response)
-    client_socket.close()
+    writer.write(response)
+    await writer.drain()
+    writer.close()
 
 
-def main() -> None:
+async def main() -> None:
     """
-    Run a simple blocking HTTP server.
+    Run an asyncio-based HTTP server.
     """
-    server_socket: socket.socket = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM,
+    server = await asyncio.start_server(
+        handle_client,
+        host="127.0.0.1",
+        port=8002,
     )
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(("127.0.0.1", 8002))
-    server_socket.listen(5)
-    server_socket.settimeout(1.0)
 
-    print("Serving on http://127.0.0.1:8002")
+    addr = server.sockets[0].getsockname()
+    print(f"Serving on http://{addr[0]}:{addr[1]}")
     print("Press Ctrl+C to stop")
 
-    try:
-        while True:
-            try:
-                client_socket, addr = server_socket.accept()
-                print(f"Connection from {addr}")
-                handle_client(client_socket)
-            except socket.timeout:
-                continue
-    except KeyboardInterrupt:
-        print("\nServer stopped.")
-    finally:
-        server_socket.close()
+    async with server:
+        try:
+            await server.serve_forever()
+        except asyncio.CancelledError:
+            print("\nShutting down gracefully...")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Server stopped.")
